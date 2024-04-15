@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./MPC-trained-model/TransPath",
+        "./acados/interfaces/acados_template",
+        "./MPC/TransPath"
+    ]
+}

@@ -1,0 +1,12 @@
+# Exclude the environment folder
+env/
+
+# Exclude the dataset and trained-models
+dataset/
+trained-models/
+
+# Exclude specific scripts directory content
+MPC/script/__pycache__/
+MPC/script/_l4c_generated/
+MPC/script/c_generated_code/
+
