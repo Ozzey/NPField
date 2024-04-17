@@ -10,12 +10,12 @@ import l4casadi as l4c
 import imageio
 import matplotlib.pyplot as plt
 import pickle
-import create_solver
+import create_solver_MPC as create_solver
 from math import cos , sin
 
 import numpy as np
 import math
-from model_nn import Autoencoder_path
+from model_nn_GPT import GPTConfig, GPT 
 
 def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map , ax1 , map_inp):
 
@@ -85,13 +85,13 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
 
     a = np.zeros(1)
 
-    paramters_static = [100] * 676 
+    paramters_static = [100] * 3456 
 
     
     
     result = model_loaded.encode_map_footprint(map_inp[1]).detach()
-    for i in range(676):
-        paramters_static[i] = result[0,i].cpu().data.numpy()
+    for i in range(3456):
+        paramters_static[i] = result[0,i].detach().cpu().numpy()
 
     parameter_values = np.concatenate([paramters_static])
 
@@ -374,20 +374,30 @@ footprint = d_footprint['footprint_husky']
 
 
 ######## load CNN Model
-device = torch.device("cuda")
-model_loaded = Autoencoder_path(mode="k")
-model_loaded.to(device)
+n_layer = 4
+n_head = 4
+n_embd = 576
+dropout = 0.1 # for pretraining 0 is good, for finetuning try 0.1+
+bias = True #False
+block_size = 1024
+device = 'cuda'
 
+model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
+                  bias=bias, vocab_size=None, dropout=dropout)
+model_args['vocab_size'] = 1024 # 50257 2048
 
-load_check = torch.load("../../trained-models/NPField_Dynamic_10.pth")
+gptconf = GPTConfig(**model_args)
 
+model_loaded = GPT(gptconf)
+checkpoint_name = '../../trained-models/NPField_onlyGPT_predmap9.pth'
+load_check = torch.load(checkpoint_name)
 
 model_loaded.load_state_dict(load_check)
-model_loaded.eval()
-losses = []
+model_loaded.to(device);
+model_loaded.eval();
 
 ##### create solver
-acados_solver = create_solver.create_solver(load_check)
+acados_solver = create_solver.create_solver(model_loaded)
 
 
 ###################### Reference path #######################
