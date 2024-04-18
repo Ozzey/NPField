@@ -59,7 +59,7 @@ def create_solver(model_path):
     ocp.constraints.lbu = np.array([-0.35, -0.4 , 0.2])
     ocp.constraints.ubu = np.array([ 0.35,  0.4 , 10])
 
-    num_output_embeding = 3459
+    num_output_embeding = 3456
     obst_x = 0
     obst_y = 0
     obst_theta = 0

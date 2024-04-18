@@ -51,7 +51,7 @@ def robot_model(model_loaded):
     torch.cuda.empty_cache()
 
     print("l4model " , l4c_model)
-    num_out_embeding = 3459
+    num_out_embeding = 3456
     num_prediction_steps_obst = 10
     t_update_dynamic_obst = 0.5
 
@@ -59,7 +59,7 @@ def robot_model(model_loaded):
 
     sym_p = MX.sym('sym_p',num_out_embeding)
     embeding = MX.sym('in',num_out_embeding)
-    embeding = vertcat(sym_p[0:3459])
+    embeding = vertcat(sym_p[0:3456])
     cost_obst = MX.sym('cost_obst')
 
 

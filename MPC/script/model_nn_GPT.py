@@ -252,6 +252,7 @@ class GPT(nn.Module):
     def forward(self, input_batch,MPC=True):
 
 
+
         if not MPC:
             encoded_input = input_batch[:,576*0:576*1]
             map_encode_robot = input_batch[:,576*1:576*2]
@@ -263,6 +264,9 @@ class GPT(nn.Module):
             y = input_batch[:,-2:-1]
             theta = input_batch[:,-1:]
         else:
+
+            input_batch = input_batch.reshape(-1, 576*6+3) 
+            
             encoded_input = input_batch[...,576*0:576*1]
             map_encode_robot = input_batch[...,576*1:576*2]
             dyn_x_cr_encode = input_batch[...,576*2:576*3]
@@ -314,7 +318,7 @@ class GPT(nn.Module):
 
 
         #print('Output: ',torch.stack(res_array).shape)
-        
+
         return torch.stack(res_array).unsqueeze(0)
 
     def encode_map_footprint(self, batch):

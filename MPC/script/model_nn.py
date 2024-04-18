@@ -118,6 +118,11 @@ class Autoencoder_path(nn.Module):
         # self.save_hyperparameters()
 
     def  forward(self, batch):
+
+
+        assert False, batch.shape 
+        
+        
         batch = batch.reshape(-1, 612+4*16+3)                     
 
         map_encode_robot = batch[..., :-(3+4*16)].to(self.device)
