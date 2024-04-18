@@ -1,5 +1,5 @@
 from acados_template import AcadosOcp, AcadosOcpSolver , AcadosModel
-from robot_model import robot_model
+from robot_model_GPT import robot_model
 import numpy as np
 import l4casadi as l4c
 import torch

@@ -249,18 +249,43 @@ class GPT(nn.Module):
 
     
 
-    def forward(self, input_batch):
+    def forward(self, input_batch,MPC=True):
 
 
-        encoded_input = input_batch[:,576*0:576*1]
-        map_encode_robot = input_batch[:,576*1:576*2]
-        dyn_x_cr_encode = input_batch[:,576*2:576*3]
-        dyn_y_cr_encode = input_batch[:,576*3:576*4]
-        dyn_t_encode_sin = input_batch[:,576*4:576*5]
-        dyn_t_encode_cos = input_batch[:,576*5:576*6]
-        x = input_batch[:,-3:-2]
-        y = input_batch[:,-2:-1]
-        theta = input_batch[:,-1:]
+        if not MPC:
+            encoded_input = input_batch[:,576*0:576*1]
+            map_encode_robot = input_batch[:,576*1:576*2]
+            dyn_x_cr_encode = input_batch[:,576*2:576*3]
+            dyn_y_cr_encode = input_batch[:,576*3:576*4]
+            dyn_t_encode_sin = input_batch[:,576*4:576*5]
+            dyn_t_encode_cos = input_batch[:,576*5:576*6]
+            x = input_batch[:,-3:-2]
+            y = input_batch[:,-2:-1]
+            theta = input_batch[:,-1:]
+        else:
+            encoded_input = input_batch[...,576*0:576*1]
+            map_encode_robot = input_batch[...,576*1:576*2]
+            dyn_x_cr_encode = input_batch[...,576*2:576*3]
+            dyn_y_cr_encode = input_batch[...,576*3:576*4]
+            dyn_t_encode_sin = input_batch[...,576*4:576*5]
+            dyn_t_encode_cos = input_batch[...,576*5:576*6]
+            x = input_batch[...,-3:-2]
+            y = input_batch[...,-2:-1]
+            theta = input_batch[...,-1:]
+
+
+        # print(encoded_input.shape)
+        # print(map_encode_robot.shape)
+        # print(dyn_x_cr_encode.shape)
+        # print(dyn_y_cr_encode.shape)
+        # print(dyn_t_encode_sin.shape)
+        # print(dyn_t_encode_cos.shape)
+
+        # print(x.shape)
+        # print(y.shape)
+        # print(theta.shape)
+
+        # print(input_batch.shape)
         
         x_emb = self.x_encode(x)
         y_emb = self.y_encode(y)
@@ -286,7 +311,11 @@ class GPT(nn.Module):
 
             res_array.append(logits[0,-1,0])
 
-        return torch.stack(res_array)
+
+
+        #print('Output: ',torch.stack(res_array).shape)
+        
+        return torch.stack(res_array).unsqueeze(0)
 
     def encode_map_footprint(self, batch):
         mapp = batch[..., :2500].to(self.device)

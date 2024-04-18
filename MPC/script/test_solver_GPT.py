@@ -10,7 +10,7 @@ import l4casadi as l4c
 import imageio
 import matplotlib.pyplot as plt
 import pickle
-import create_solver_MPC as create_solver
+import create_solver_GPT as create_solver
 from math import cos , sin
 
 import numpy as np
