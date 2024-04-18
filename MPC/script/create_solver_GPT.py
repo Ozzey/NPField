@@ -6,6 +6,8 @@ import torch
 
 def create_solver(model_path):
 
+    device = torch.device("cuda")
+    model_path.to(device)
     model , l4c_model = robot_model(model_path)
 
     # acados OCP handle

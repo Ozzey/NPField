@@ -59,7 +59,7 @@ def robot_model(model_loaded):
 
     sym_p = MX.sym('sym_p',num_out_embeding)
     embeding = MX.sym('in',num_out_embeding)
-    embeding = vertcat(sym_p[0:3456])
+    embeding = vertcat(sym_p[0:3459])
     cost_obst = MX.sym('cost_obst')
 
 
