@@ -28,6 +28,23 @@ import imageio
 from model_nn_GPT import GPTConfig, GPT 
 
 
+#mkdir -p build
+#cd build
+#cmake -DACADOS_WITH_QPOASES=ON ..
+#make install -j4
+
+
+#pip install -r requirements_build.txt
+#pip install l4casadi --no-build-isolation
+
+#pip install -e /root/NPField/acados/interfaces/acados_template
+# export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"/root/NPField/acados/lib"
+# export ACADOS_SOURCE_DIR="/root/NPField/acados"
+
+# make shared_library
+# export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/NPField/acados/lib
+# make examples_c
+# make run_examples_c
     
 
 sub_maps_all = pickle.load(open("../../dataset/dataset1000/dataset_1000_maps_0_100_all.pkl", "rb"))
@@ -53,8 +70,22 @@ gptconf = GPTConfig(**model_args)
 
 model_gpt = GPT(gptconf)
 checkpoint_name = '../../trained-models/NPField_onlyGPT_predmap9.pth'
+#model_gpt.load_state_dict(torch.load(checkpoint_name))
 
-model_gpt.load_state_dict(torch.load(checkpoint_name))
+
+
+pretrained_dict = torch.load(checkpoint_name)
+model_dict = model_gpt.state_dict()
+# 1. filter out unnecessary keys
+rejected_keys = [k for k, v in model_dict.items() if k not in pretrained_dict]
+print('REJECTED KEYS test GPT: ',rejected_keys)
+pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+# 2. overwrite entries in the existing state dict
+model_dict.update(pretrained_dict) 
+# 3. load the new state dict
+model_gpt.load_state_dict(model_dict)
+
+
 model_gpt.to(device);
 model_gpt.eval();
 
@@ -100,7 +131,6 @@ for theta_angle in [ANGLE]:
 
                     input_batch = torch.hstack((result, x, y, theta))
 
-
                     npf_10 = model_gpt(input_batch)   # encode_map_pos
 
                     res_array[:, ii, jj] = npf_10.detach().cpu().numpy()
@@ -124,3 +154,8 @@ for theta_angle in [ANGLE]:
 
         imageio.mimsave('NPField_TIME_Test_ep{}_angle_{}.gif'.format(map_id,str(d_info[2])[:3]), frames, format="GIF", loop=65535)
         print('NPField_TIME_old_Test_ep{}_angle_{}.gif'.format(map_id,str(d_info[2])[:3]))
+
+
+
+
+

@@ -8,6 +8,7 @@ from casadi import SX, DM, vertcat, sin, cos, tan, exp, if_else, pi , atan , log
 
     
 def robot_model(model_loaded):
+    
     model_name = "robot_model"
 
     # State

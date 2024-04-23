@@ -249,7 +249,7 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
 
     return path_mpc , parameter_values , elapsed , ROB_x , ROB_y
 
-def gif_generate(path , ROB_x , ROB_y,num_map):
+def gif_generate(path , ROB_x , ROB_y,num_map,id):
     x_obst = dyn_obst_info["initial_position"][num_map,0]
     y_obst = dyn_obst_info["initial_position"][num_map,1]
     theta_obst = dyn_obst_info["initial_position"][num_map,2]
@@ -303,7 +303,7 @@ def gif_generate(path , ROB_x , ROB_y,num_map):
         plt.close(fig2)
 
 
-    imageio.mimsave('../../outputs/dynamic_obst_'+str(num_map)+'.gif', frames, format="GIF", fps=20)  
+    imageio.mimsave(f'../../outputs/dynamic_obst_{num_map}_{id}'+'.gif', frames, format="GIF", fps=20)  
 
 def fill_map_inp(num_map , map , footprint , obst_initial_position):
     print(map.shape)
@@ -314,8 +314,8 @@ def fill_map_inp(num_map , map , footprint , obst_initial_position):
         for i in range (50):
             for j in range(50):
                 map_inp[n][k] = map[num_map][n+1][i,j]  #[n+1][i,j] , [0][i,j]
-                if(map_inp[n][k] == 100):
-                    map_inp[n][k] = 1
+        #         if(map_inp[n][k] == 100):
+        #             map_inp[n][k] = 1
                 k = k + 1
         k = 0
     
@@ -324,21 +324,25 @@ def fill_map_inp(num_map , map , footprint , obst_initial_position):
         for i in range (50):
             for j in range(50):
                 map_inp[n][2500+k] = footprint[i,j]
-                if(map_inp[n][2500+k] == 100):
-                    map_inp[n][2500+k] = 1
+        #         if(map_inp[n][2500+k] == 100):
+        #             map_inp[n][2500+k] = 1
                 k = k +1
         k = 0
-    map_inp[:,-3] = obst_initial_position[0]
-    map_inp[:,-2] = obst_initial_position[1]
-    map_inp[:,-1] = obst_initial_position[2]
-    return map_inp
+
+    map_inp[:,:5000]/=100.
+
+    for i in range(10):
+        map_inp[i,-3] = obst_initial_position[i][0]
+        map_inp[i,-2] = obst_initial_position[i][1]
+        map_inp[i,-1] = obst_initial_position[i][2]
+    return map_inp.cuda()
 
 
 ###### SIMULATE #######
 
-def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_info, map, footprint, acados_solver):
+def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_info, map, footprint, acados_solver,id=0):
     id_dyn = 0
-    obst_initial_position = obst_motion_info['motion_dynamic_obst'][num_map, id_dyn]
+    obst_initial_position = obst_motion_info['motion_dynamic_obst'][num_map, id_dyn*10:(id_dyn+1)*10]
     print("obst map", num_map, "is", obst_initial_position)
 
     map_inp = fill_map_inp(num_map, map, footprint, obst_initial_position)
@@ -350,7 +354,7 @@ def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_inf
     ax.pcolor(map[num_map][0][::-1], cmap=cmap, edgecolors='w', linewidths=0.1)
 
     path_mpc, parameters, elapsed, ROB_x, ROB_y = test_solver(acados_solver, x_ref_points, y_ref_points, theta_0, num_map, ax, map_inp)
-    gif_generate(path_mpc, ROB_x, ROB_y, num_map)
+    gif_generate(path_mpc, ROB_x, ROB_y, num_map,id)
 
     fig, ax2 = plt.subplots(1)
     ax2.plot(path_mpc[:,4], path_mpc[:,2])
@@ -380,7 +384,7 @@ n_embd = 576
 dropout = 0.1 # for pretraining 0 is good, for finetuning try 0.1+
 bias = True #False
 block_size = 1024
-device = 'cuda'
+device = torch.device("cuda")
 
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout)
@@ -390,15 +394,56 @@ gptconf = GPTConfig(**model_args)
 
 model_loaded = GPT(gptconf)
 checkpoint_name = '../../trained-models/NPField_onlyGPT_predmap9.pth'
-load_check = torch.load(checkpoint_name)
 
-model_loaded.load_state_dict(load_check)
+
+
+pretrained_dict = torch.load(checkpoint_name)
+model_dict = model_loaded.state_dict()
+# 1. filter out unnecessary keys
+rejected_keys = [k for k, v in model_dict.items() if k not in pretrained_dict]
+print('REJECTED KEYS: ',rejected_keys)
+pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+# 2. overwrite entries in the existing state dict
+model_dict.update(pretrained_dict) 
+# 3. load the new state dict
+model_loaded.load_state_dict(model_dict)
+
+
+"""
+sd = model_loaded.state_dict()
+sd_keys = sd.keys()
+sd_keys = [k for k in sd_keys if not k.endswith('.attn.bias')] # discard this mask / buffer, not a param
+sd_hf = torch.load(checkpoint_name)
+
+sd_keys_hf = sd_hf.keys()
+sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.masked_bias')] # ignore these, just a buffer
+sd_keys_hf = [k for k in sd_keys_hf if not k.endswith('.attn.bias')] # same, just the mask (buffer)
+transposed = ['attn.c_attn.weight', 'attn.c_proj.weight', 'mlp.c_fc.weight', 'mlp.c_proj.weight']
+# basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla Linear
+# this means that we have to transpose these weights when we import them
+#assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
+for k in sd_keys_hf:
+    if any(k.endswith(w) for w in transposed):
+        # special treatment for the Conv1D weights we need to transpose
+        assert sd_hf[k].shape[::-1] == sd[k].shape
+        with torch.no_grad():
+            sd[k].copy_(sd_hf[k].t())
+    else:
+        # vanilla copy over the other parameters
+        assert sd_hf[k].shape == sd[k].shape
+        with torch.no_grad():
+            sd[k].copy_(sd_hf[k])
+"""
+
+
+
+#load_check = torch.load(checkpoint_name)
+#model_loaded.load_state_dict(load_check)
 model_loaded.to(device);
 model_loaded.eval();
 
 ##### create solver
 acados_solver = create_solver.create_solver(model_loaded)
-
 
 ###################### Reference path #######################
 
@@ -420,7 +465,8 @@ run_simulation(
     obst_motion_info=obst_motion_info,
     map=map,
     footprint=footprint,
-    acados_solver=acados_solver
+    acados_solver=acados_solver,
+    id=0,
 )
 
 
@@ -434,8 +480,10 @@ run_simulation(
     obst_motion_info=obst_motion_info,
     map=map,
     footprint=footprint,
-    acados_solver=acados_solver
+    acados_solver=acados_solver,
+    id=1,
 )
+
 
 # Case 3: Test on the smallest map index with varied reference points
 # This scenario might test the robot's precision and capability in tight spaces
@@ -447,7 +495,8 @@ run_simulation(
     obst_motion_info=obst_motion_info,
     map=map,
     footprint=footprint,
-    acados_solver=acados_solver
+    acados_solver=acados_solver,
+    id=2,
 )
 
 

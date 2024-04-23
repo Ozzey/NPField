@@ -70,7 +70,7 @@ def top_k_top_p_filter(logits, top_k: int = 0, top_p: float = 0.0):
 class GPT(nn.Module):
 
     def __init__(self, config):
-        super().__init__()
+        super(GPT, self).__init__()
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config
@@ -233,7 +233,6 @@ class GPT(nn.Module):
             b = torch.flatten(mapp[:,0,1:-1,1:-1].long(), start_dim=1)
             decoded_map_loss = F.cross_entropy(a,b)
 
-            #print('logits shaape: ',logits.shape)
             pred = logits[:,9:-1,:]
 
             loss_potential = F.mse_loss(pred,targets)
@@ -249,80 +248,64 @@ class GPT(nn.Module):
 
     
 
-    def forward(self, input_batch,MPC=True):
+    def forward(self, input_batch):
 
 
+        input_batch = input_batch.reshape(-1, 576*6+3) 
+        
+        encoded_input = input_batch[...,576*0:576*1]
+        map_encode_robot = input_batch[...,576*1:576*2]
+        dyn_x_cr_encode = input_batch[...,576*2:576*3]
+        dyn_y_cr_encode = input_batch[...,576*3:576*4]
+        dyn_t_encode_sin = input_batch[...,576*4:576*5]
+        dyn_t_encode_cos = input_batch[...,576*5:576*6]
+        x = input_batch[...,-3:-2]
+        y = input_batch[...,-2:-1]
+        theta = input_batch[...,-1:]
 
-        if not MPC:
-            encoded_input = input_batch[:,576*0:576*1]
-            map_encode_robot = input_batch[:,576*1:576*2]
-            dyn_x_cr_encode = input_batch[:,576*2:576*3]
-            dyn_y_cr_encode = input_batch[:,576*3:576*4]
-            dyn_t_encode_sin = input_batch[:,576*4:576*5]
-            dyn_t_encode_cos = input_batch[:,576*5:576*6]
-            x = input_batch[:,-3:-2]
-            y = input_batch[:,-2:-1]
-            theta = input_batch[:,-1:]
-        else:
-
-            input_batch = input_batch.reshape(-1, 576*6+3) 
-            
-            encoded_input = input_batch[...,576*0:576*1]
-            map_encode_robot = input_batch[...,576*1:576*2]
-            dyn_x_cr_encode = input_batch[...,576*2:576*3]
-            dyn_y_cr_encode = input_batch[...,576*3:576*4]
-            dyn_t_encode_sin = input_batch[...,576*4:576*5]
-            dyn_t_encode_cos = input_batch[...,576*5:576*6]
-            x = input_batch[...,-3:-2]
-            y = input_batch[...,-2:-1]
-            theta = input_batch[...,-1:]
-
-
-        # print(encoded_input.shape)
-        # print(map_encode_robot.shape)
-        # print(dyn_x_cr_encode.shape)
-        # print(dyn_y_cr_encode.shape)
-        # print(dyn_t_encode_sin.shape)
-        # print(dyn_t_encode_cos.shape)
-
-        # print(x.shape)
-        # print(y.shape)
-        # print(theta.shape)
-
-        # print(input_batch.shape)
+        
         
         x_emb = self.x_encode(x)
         y_emb = self.y_encode(y)
         theta_emb_sin = self.theta_encode_sin(torch.sin(theta))
         theta_emb_cos = self.theta_encode_cos(torch.cos(theta))
 
-        final_tokens = [encoded_input, map_encode_robot, dyn_x_cr_encode, dyn_y_cr_encode, dyn_t_encode_sin, dyn_t_encode_cos ,x_emb, y_emb, theta_emb_sin, theta_emb_cos]
+        #final_tokens = [encoded_input, map_encode_robot, dyn_x_cr_encode, dyn_y_cr_encode, dyn_t_encode_sin, dyn_t_encode_cos ,x_emb, y_emb, theta_emb_sin, theta_emb_cos]
 
-        res_array = []
+        res_array = torch.zeros((1,10))
         future_steps = 10
+
+        tok_emb = torch.cat((encoded_input, map_encode_robot, dyn_x_cr_encode, dyn_y_cr_encode, dyn_t_encode_sin, dyn_t_encode_cos ,x_emb, y_emb, theta_emb_sin, theta_emb_cos), dim=0).unsqueeze(0)
+
         
         for step_i in range(future_steps):
-            tok_emb = torch.stack(final_tokens, dim=1)
-            pos = torch.arange(0, len(final_tokens), dtype=torch.long, device=self.device) # shape (t)
+            
+    
+            pos = torch.arange(0, tok_emb.shape[1], dtype=torch.long, device=self.device) # shape (t)
             pos_emb = self.transformer.wpe(pos)
             x = self.transformer.drop(tok_emb + pos_emb)
+    
             for block in self.transformer.h:
                 x = block(x)
             x = self.transformer.ln_f(x) 
             logits = self.lm_head(x)
 
-            final_tokens.append(self.potential_encode(torch.clone(logits[0,-1,0].detach()).unsqueeze(0).unsqueeze(0)))
+            token_to_append = self.potential_encode(torch.clone(logits[0,-1,0].detach()).unsqueeze(0).unsqueeze(0)).unsqueeze(0)
 
-            res_array.append(logits[0,-1,0])
+            tok_emb = torch.cat((tok_emb, token_to_append),dim=1)
+    
+            res_array[0,step_i] = logits[0,-1,0]#.item()
 
 
+        return res_array   #[0,:10,0].unsqueeze(0) #logits[0,:10,0].unsqueeze(0)  theta_emb_cos[:,:10]
 
-        #print('Output: ',torch.stack(res_array).shape)
+        # #print('Output: ',torch.stack(res_array).shape)
 
-        return torch.stack(res_array).unsqueeze(0)
+        # return res_array #torch.stack(res_array).unsqueeze(0)
 
+    #@torch.jit.script
     def encode_map_footprint(self, batch):
-        mapp = batch[..., :2500].to(self.device)
+        mapp = batch[..., :2500]#.to(self.device)
         mapp = torch.reshape(mapp, (-1, 1, 50, 50))
     
 
@@ -551,7 +534,7 @@ class CausalSelfAttention(nn.Module):
         self.n_embd = config.n_embd
         self.dropout = config.dropout
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
-        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        self.flash = False #hasattr(torch.nn.functional, 'scaled_dot_product_attention')
         if not self.flash:
             print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
             # causal mask to ensure that attention is only applied to the left in the input sequence
