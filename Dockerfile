@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     make \
     gcc \
     g++ \
+    vim \
     python3-pip \
     python3-venv \
     libopenblas-dev \
@@ -52,7 +53,7 @@ RUN mkdir -p /app/third-party
 
 # Install acados from third-party directory
 RUN cd /app/third-party && \
-    git clone --depth 1 https://github.com/acados/acados.git && \
+    git clone https://github.com/acados/acados.git && \
     cd acados && \
     git submodule update --recursive --init --depth 1  && \
     mkdir -p build && cd build && \
@@ -62,17 +63,17 @@ RUN cd /app/third-party && \
 # Install acados python Interface    
 RUN pip install -e /app/third-party/acados/interfaces/acados_template
 
-
 # Set environment variables needed by acados
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/app/third-party/acados/lib
 ENV ACADOS_SOURCE_DIR="/app/third-party/acados"
 
+
 # Install L4casadi
-#RUN cd /app/third-party && \
-#    git clone --depth 1 https://github.com/Tim-Salzmann/l4casadi.git && \
-#    cd l4casadi && \
-#   pip install -r requirements_build.txt && \
-#    pip install . --no-build-isolation
+RUN cd /app/third-party && \
+    git clone https://github.com/Tim-Salzmann/l4casadi.git && \
+    cd l4casadi && \
+    pip install -r requirements_build.txt && \
+    pip install . --no-build-isolation
 
 
 # Set the working directory to /app
