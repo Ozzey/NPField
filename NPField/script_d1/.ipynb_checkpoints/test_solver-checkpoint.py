@@ -220,9 +220,9 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
         ax1.plot([ROB_x[i,0],ROB_x[i,5],ROB_x[i,6],ROB_x[i,7],ROB_x[i,0]], [ROB_y[i,0],ROB_y[i,5],ROB_y[i,6],ROB_y[i,7],ROB_y[i,0]], color=colors[i]) #'k'
         ax1.text(i*2.5 , 1 , str(round(simX[i,4],1))+"  ,  ",color=colors[i])
      #   ax1.plot([ROB_x[i,0],ROB_x[i,1],ROB_x[i,2],ROB_x[i,3],ROB_x[i,4],ROB_x[i,5],ROB_x[i,6],ROB_x[i,7],ROB_x[i,8]], [ROB_y[i,0],ROB_y[i,1],ROB_y[i,2],ROB_y[i,3],ROB_y[i,4],ROB_y[i,5],ROB_y[i,6],ROB_y[i,7],ROB_y[i,8]], color='k')
-    x_obst = dataset_initial_position_dynamic_obst["initial_position"][num_map,0]
-    y_obst = dataset_initial_position_dynamic_obst["initial_position"][num_map,1]
-    theta_obst = dataset_initial_position_dynamic_obst["initial_position"][num_map,2]
+    x_obst = dyn_obst_info["initial_position"][num_map,0]
+    y_obst = dyn_obst_info["initial_position"][num_map,1]
+    theta_obst = dyn_obst_info["initial_position"][num_map,2]
     OBST_x = np.zeros([10,4])
     OBST_y = np.zeros([10,4])
     OBST_x[0,0] = x_obst + 0.291 * cos(theta_obst -1.03)
@@ -249,7 +249,7 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
         OBST_y[i+1,3] = y_obst - 0.291 * sin(theta_obst+1.03)
         ax1.plot([OBST_x[i+1,0]*10,OBST_x[i+1,1]*10,OBST_x[i+1,2]*10,OBST_x[i+1,3]*10,OBST_x[i+1,0]*10], [OBST_y[i+1,0]*10,OBST_y[i+1,1]*10,OBST_y[i+1,2]*10,OBST_y[i+1,3]*10,OBST_y[i+1,0]*10], color=colors[i])
         ax1.text(1.5+i*2.5 , 5 , str(round(0.5+i*0.5,1))+"  ,  ",color=colors[i])
-    print(dataset_initial_position_dynamic_obst["initial_position"][num_map,0],dataset_initial_position_dynamic_obst["initial_position"][num_map,1])
+    print(dyn_obst_info["initial_position"][num_map,0],dyn_obst_info["initial_position"][num_map,1])
     path_mpc = simX
 
     return path_mpc , parameter_values , elapsed , ROB_x , ROB_y
