@@ -1,6 +1,7 @@
 import torch
 import json
 from matplotlib import colors , transforms
+import os
 import sys
 import time
 import json
@@ -50,7 +51,7 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
 
     print("length path",length_path)
 
-    v_max = 0.6
+    v_max = 0.5
 
     new_time_step = ((length_path)/(v_max*N)) * np.ones(N)
 
@@ -85,13 +86,11 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
 
     a = np.zeros(1)
 
-    paramters_static = [100] * 676 
-
-    
-    
-    result = model_loaded.encode_map_footprint(map_inp[1]).detach()
-    for i in range(676):
-        paramters_static[i] = result[0,i].cpu().data.numpy()
+    paramters_static = [100] * 612 * 10
+    for n in range(10):
+        result = model_loaded.encode_map_footprint(map_inp[n]).detach()
+        for i in range(612):
+            paramters_static[n*612 + i] = result[0,i].cpu().data.numpy()
 
     parameter_values = np.concatenate([paramters_static])
 
@@ -149,6 +148,9 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
         ROB_y[i,7] = simX[i,1] - 0.6 * sin(simX[i,3]+0.59)
         ROB_y[i,8] = simX[i,1] + 0.6 * sin(simX[i,3]-0.59)
     
+    # for i in range(31):
+    #     path_mpc[i,0] = path_mpc[i,0] * 100/5
+    #     path_mpc[i,1] = 100 - path_mpc[i,1] * 100/5
     print("initial path")
     
     for i in range(N + 1):
@@ -162,7 +164,6 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
         simU[i,:]=u
     print("status" , status)
     cost = acados_solver.get_cost()
-    acados_solver.print_statistics()
     print("cost", cost)
     
     if (num_map ==-1):
@@ -198,7 +199,9 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
             ROB_y[i,6] = ROB_y[i,6] * 10
             ROB_y[i,7] = ROB_y[i,7] * 10
             ROB_y[i,8] = ROB_y[i,8] * 10
-
+        
+       # ax1.xaxis.set_visible(False)
+       # ax1.yaxis.set_visible(False)
         ax1.plot(simX[:, 0], simX[:, 1] , linewidth=2 , label="NPField path" )#'NPField path')  # marker='o',
         ax1.plot(init_x , init_y, linestyle='dashed', linewidth=2 , label='Initial path')
         ax1.legend()
@@ -209,15 +212,17 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
 
         ticks_y = ticker.FuncFormatter(lambda x, pos: '{0:g}'.format(x/scale_y))
         ax1.yaxis.set_major_formatter(ticks_y)
+        #ax1.set_xlabel("x , meters")
+        #ax1.set_ylabel("y , meters")
 
     colors = ['k','k','r','r','g','g','b','b','c','c','m','m','y','y','k','k','r','r','g','g','b','b','c','c','m','m','y','y','k','k']
     for i in range(0,N,2):
         ax1.plot([ROB_x[i,0],ROB_x[i,5],ROB_x[i,6],ROB_x[i,7],ROB_x[i,0]], [ROB_y[i,0],ROB_y[i,5],ROB_y[i,6],ROB_y[i,7],ROB_y[i,0]], color=colors[i]) #'k'
         ax1.text(i*2.5 , 1 , str(round(simX[i,4],1))+"  ,  ",color=colors[i])
-
-    x_obst = dyn_obst_info["initial_position"][num_map,0]
-    y_obst = dyn_obst_info["initial_position"][num_map,1]
-    theta_obst = dyn_obst_info["initial_position"][num_map,2]
+     #   ax1.plot([ROB_x[i,0],ROB_x[i,1],ROB_x[i,2],ROB_x[i,3],ROB_x[i,4],ROB_x[i,5],ROB_x[i,6],ROB_x[i,7],ROB_x[i,8]], [ROB_y[i,0],ROB_y[i,1],ROB_y[i,2],ROB_y[i,3],ROB_y[i,4],ROB_y[i,5],ROB_y[i,6],ROB_y[i,7],ROB_y[i,8]], color='k')
+    x_obst = dataset_initial_position_dynamic_obst["initial_position"][num_map,0]
+    y_obst = dataset_initial_position_dynamic_obst["initial_position"][num_map,1]
+    theta_obst = dataset_initial_position_dynamic_obst["initial_position"][num_map,2]
     OBST_x = np.zeros([10,4])
     OBST_y = np.zeros([10,4])
     OBST_x[0,0] = x_obst + 0.291 * cos(theta_obst -1.03)
@@ -244,12 +249,12 @@ def test_solver(acados_solver , x_ref_points , y_ref_points , theta_0 , num_map 
         OBST_y[i+1,3] = y_obst - 0.291 * sin(theta_obst+1.03)
         ax1.plot([OBST_x[i+1,0]*10,OBST_x[i+1,1]*10,OBST_x[i+1,2]*10,OBST_x[i+1,3]*10,OBST_x[i+1,0]*10], [OBST_y[i+1,0]*10,OBST_y[i+1,1]*10,OBST_y[i+1,2]*10,OBST_y[i+1,3]*10,OBST_y[i+1,0]*10], color=colors[i])
         ax1.text(1.5+i*2.5 , 5 , str(round(0.5+i*0.5,1))+"  ,  ",color=colors[i])
-    print(dyn_obst_info["initial_position"][num_map,0],dyn_obst_info["initial_position"][num_map,1])
+    print(dataset_initial_position_dynamic_obst["initial_position"][num_map,0],dataset_initial_position_dynamic_obst["initial_position"][num_map,1])
     path_mpc = simX
 
     return path_mpc , parameter_values , elapsed , ROB_x , ROB_y
 
-def gif_generate(path , ROB_x , ROB_y,num_map):
+def gif_generate(path , ROB_x , ROB_y,num_map, id_map):
     x_obst = dyn_obst_info["initial_position"][num_map,0]
     y_obst = dyn_obst_info["initial_position"][num_map,1]
     theta_obst = dyn_obst_info["initial_position"][num_map,2]
@@ -303,12 +308,12 @@ def gif_generate(path , ROB_x , ROB_y,num_map):
         plt.close(fig2)
 
 
-    imageio.mimsave('../../outputs/dynamic_obst_'+str(num_map)+'.gif', frames, format="GIF", fps=20)  
+    imageio.mimsave(f'../../outputs/D1_MAP_{str(num_map)}_ID_{str(id_map)}.gif', frames, format="GIF", fps=20)  
 
-def fill_map_inp(num_map , map , footprint , obst_initial_position):
+def fill_map_inp(num_map , map , footprint):
     print(map.shape)
     print(footprint.shape)
-    map_inp = torch.zeros((10,5003))
+    map_inp = torch.zeros((10,5000))
     k = 0
     for n in range(10):
         for i in range (50):
@@ -328,20 +333,17 @@ def fill_map_inp(num_map , map , footprint , obst_initial_position):
                     map_inp[n][2500+k] = 1
                 k = k +1
         k = 0
-    map_inp[:,-3] = obst_initial_position[0]
-    map_inp[:,-2] = obst_initial_position[1]
-    map_inp[:,-1] = obst_initial_position[2]
     return map_inp
 
 
 ###### SIMULATE #######
 
-def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_info, map, footprint, acados_solver):
+def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_info, map, footprint, acados_solver, id_map=0):
     id_dyn = 0
     obst_initial_position = obst_motion_info['motion_dynamic_obst'][num_map, id_dyn]
     print("obst map", num_map, "is", obst_initial_position)
 
-    map_inp = fill_map_inp(num_map, map, footprint, obst_initial_position)
+    map_inp = fill_map_inp(num_map, map, footprint)
     print("map shape", map_inp.shape)
 
     cmap = colors.ListedColormap(['white', 'black'])
@@ -350,7 +352,7 @@ def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_inf
     ax.pcolor(map[num_map][0][::-1], cmap=cmap, edgecolors='w', linewidths=0.1)
 
     path_mpc, parameters, elapsed, ROB_x, ROB_y = test_solver(acados_solver, x_ref_points, y_ref_points, theta_0, num_map, ax, map_inp)
-    gif_generate(path_mpc, ROB_x, ROB_y, num_map)
+    gif_generate(path_mpc, ROB_x, ROB_y, num_map, id_map)
 
     fig, ax2 = plt.subplots(1)
     ax2.plot(path_mpc[:,4], path_mpc[:,2])
@@ -366,7 +368,9 @@ def run_simulation(num_map, x_ref_points, y_ref_points, theta_0, obst_motion_inf
 sub_maps = pickle.load(open("../../dataset/dataset1000/dataset_1000_maps_0_100_all.pkl", "rb"))
 d_footprint = pickle.load(open("../../dataset/dataset1000/data_footprint.pkl", "rb"))
 dyn_obst_info = pickle.load(open("../../dataset/dataset1000/dataset_initial_position_dynamic_obst.pkl", "rb"))
+#                                  ../../dataset/dataset1000/dataset_initial_position_dynamic_obst.pkl
 obst_motion_info = pickle.load(open("../../dataset/dataset1000/dataset_1000_maps_obst_motion.pkl", "rb"))
+                                    
 
 
 map = sub_maps['submaps']
@@ -379,7 +383,7 @@ model_loaded = Autoencoder_path(mode="k")
 model_loaded.to(device)
 
 
-load_check = torch.load("../../trained-models/NPField_Dynamic_10.pth")
+load_check = torch.load("../../trained-models/NPField_D1.pth")
 
 
 model_loaded.load_state_dict(load_check)
@@ -397,48 +401,26 @@ path_mpc = np.zeros((N+1, 4))
 initial_path = np.zeros((N+1 , 3))
 
 
+from generate_MPC_config import generate_config
+costmaps = pickle.load(open("../../dataset/dataset1000/dataset_1000_costmaps.pkl", "rb"))
 
-# Case 1: Large map area with moderate reference points
-# num_map = 3 corresponds to the third map in your collection
-# Reference points indicate target positions the robot should consider
-# Theta = 2 radians suggests the initial orientation of the robot
-run_simulation(
-    num_map=3,
-    x_ref_points=np.array([3.6, 2.6]),
-    y_ref_points=np.array([3.16, 4.55]),
-    theta_0=2,
-    obst_motion_info=obst_motion_info,
-    map=map,
-    footprint=footprint,
-    acados_solver=acados_solver
-)
+num_map = 3
+num_orientation = 0
 
 
-# Case 2: Different orientation and starting points in a smaller map section
-# Negative theta_0 indicates a different starting rotation, potentially requiring sharp turns
-run_simulation(
-    num_map=1,
-    x_ref_points=np.array([3.3, 4.1]),
-    y_ref_points=np.array([3.3, 1.8]),
-    theta_0=-0.9,
-    obst_motion_info=obst_motion_info,
-    map=map,
-    footprint=footprint,
-    acados_solver=acados_solver
-)
-
-# Case 3: Test on the smallest map index with varied reference points
-# This scenario might test the robot's precision and capability in tight spaces
-run_simulation(
-    num_map=0,
-    x_ref_points=np.array([2.27, 0.14]),
-    y_ref_points=np.array([1.44, 1.8]),
-    theta_0=2.5,
-    obst_motion_info=obst_motion_info,
-    map=map,
-    footprint=footprint,
-    acados_solver=acados_solver
-)
+for i in range(10):
+    x_ref_points, y_ref_points, theta_0 = generate_config(costmaps['costmap'], num_map, num_orientation)
+    
+    run_simulation(
+        num_map=num_map,
+        x_ref_points=x_ref_points,
+        y_ref_points=y_ref_points,
+        theta_0=theta_0,
+        obst_motion_info=obst_motion_info,
+        map=map,
+        footprint=footprint,
+        acados_solver=acados_solver,
+        id_map = i
+    )
 
 
-plt.show()

@@ -9,7 +9,7 @@ from casadi import SX, DM, vertcat, sin, cos, tan, exp, if_else, pi , atan , log
     
 def robot_model(model_loaded):
     model_name = "robot_model"
-    # yamle file paramters
+
     # State
     x = MX.sym('x') 
     y = MX.sym('y')   
@@ -51,50 +51,37 @@ def robot_model(model_loaded):
     torch.cuda.empty_cache()
 
     print("l4model " , l4c_model)
-    num_out_embeding = 612
+    num_out_embeding = 676
     num_prediction_steps_obst = 10
     t_update_dynamic_obst = 0.5
 
     dummy_embeding = np.zeros(num_out_embeding)
-   # for i in range(num_out_embeding):
-   #     dummy_embeding[i] = 0
 
-    embeding_at_all_steps = MX.sym('in',num_out_embeding * num_prediction_steps_obst)
-    
-    embeding_at_one_step = MX.sym('in_one',num_out_embeding)
-    embeding_at_one_step = embeding_at_all_steps[0:612]
+    sym_p = MX.sym('sym_p',num_out_embeding)
+    embeding = MX.sym('in',num_out_embeding)
+    embeding = vertcat(sym_p[0:676])
+    cost_obst = MX.sym('cost_obst')
+
+    potential_l4c_at_embeding = MX.sym('pot')
+    potential_l4c_at_embeding = l4c_model(vertcat(embeding,x,y,theta))
+
+    cost_obst = potential_l4c_at_embeding[0][0]
+   
     for j in range(num_prediction_steps_obst):
         cond_1 = t_point >= j * t_update_dynamic_obst
         cond_2 = t_point <  (j * t_update_dynamic_obst + t_update_dynamic_obst)
         cond_3 = logic_and(cond_1 , cond_2)
-        embeding_at_one_step = if_else(cond_3 , embeding_at_all_steps[j*num_out_embeding:j*num_out_embeding + num_out_embeding] , embeding_at_one_step)
-        sym_p = vertcat(embeding_at_one_step)    
-    model.cost_y_expr = vertcat(sym_x, sym_u , l4c_model(vertcat(sym_p,x,y,theta)))
-    model.cost_y_expr_e = vertcat(sym_x, l4c_model(vertcat(sym_p,x,y,theta)))
+        cost_obst = if_else(cond_3 , potential_l4c_at_embeding[j][0] , cost_obst)
+ 
+    model.cost_y_expr = vertcat(sym_x, sym_u , cost_obst)
+    model.cost_y_expr_e = vertcat(sym_x, cost_obst)
     
     model.f_impl_expr = f_impl
     model.f_expl_expr = f_expl
     model.x = sym_x
     model.xdot = x_dot
     model.u = sym_u
-    model.p = embeding_at_all_steps
+    model.p = sym_p
     model.name = "robot_model"
 
     return model , l4c_model
-
-if __name__ == "__main__":
-
-    ######## load CNN Model
-    device = torch.device("cuda")
-    model_path = Autoencoder_path(mode="k")
-    model_path.to(device)
-    load_check = torch.load("NPField_Dynamic_NonWallObst.pth")
-    # model_dict = model_path.state_dict()
-    # pretrained_dict = {k: v for k, v in load_check.items() if k in model_dict}
-    # model_dict.update(pretrained_dict) 
-    model_path.load_state_dict(load_check)
-    model_path.eval();
-    losses = []
-
-    model , l4c_model = robot_model(model_path)
-    print(model)

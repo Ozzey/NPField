@@ -62,7 +62,9 @@ class Autoencoder_path(nn.Module):
     ):
         super().__init__()
         heads_dim = hidden_channels // attn_heads
-        self.encoder = Encoder(1, hidden_channels, downsample_steps, cnn_dropout, num_groups=32)
+        self.encoder = Encoder(
+            1, hidden_channels, downsample_steps, cnn_dropout, num_groups=32
+        )
         self.encoder_robot = Encoder(1, 1, 3, 0.15, num_groups=1)
         
         self.pos = PosEmbeds(
@@ -88,25 +90,33 @@ class Autoencoder_path(nn.Module):
         self.y_cord = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
         self.theta_sin = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
         self.theta_cos = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
-        
-        self.dyn_x_cord = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
-        self.dyn_y_cord = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
-        self.dyn_theta_sin = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
-        self.dyn_theta_cos = nn.Sequential(nn.Linear(1, 16), nn.ReLU())
 
         self.encoder_after = Encoder(hidden_channels, 32, 1, 0.15, num_groups=32)
         self.decoder_after = Decoder(32, hidden_channels, 1, 0.15, num_groups=32)
         
         self.decoder_MAP = Decoder(hidden_channels, 2, 3, 0.15, num_groups=32)
-
+        
+        """
         self.linear_after_mean = nn.Sequential(
-            nn.Linear(740, 256),                      
+            nn.Linear(1225, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            #nn.Sigmoid(),
+        )
+        """
+        
+        self.linear_after_mean = nn.Sequential(
+            nn.Linear(676, 256),                       # 1225
             nn.GELU(),
             nn.Linear(256, 128),
             nn.GELU(),
             nn.Linear(128, 64),
             nn.GELU(),
-            nn.Linear(64, 10),
+            nn.Linear(64, 1),
             nn.GELU(),
         )
 
@@ -117,62 +127,35 @@ class Autoencoder_path(nn.Module):
         self.device = torch.device("cuda")
         # self.save_hyperparameters()
 
-    def  forward(self, batch):
+    def forward(self, batch):
+        batch = batch.reshape(-1, 615)
 
-
-        assert False, batch.shape 
-        
-        
-        batch = batch.reshape(-1, 612+4*16+3)                     
-
-        map_encode_robot = batch[..., :-(3+4*16)].to(self.device)
-        
-        dyn_x_cr_encode = batch[..., -(3+4*16):-(3+3*16)].to(self.device)
-        dyn_y_cr_encode = batch[..., -(3+3*16):-(3+2*16)].to(self.device)
-        dyn_tsin_encode = batch[..., -(3+2*16):-(3+1*16)].to(self.device)
-        dyn_tcos_encode = batch[..., -(3+1*16):-(3+0*16)].to(self.device)
+        map_encode_robot = batch[..., :-3].to(self.device)
 
         x_crd = torch.reshape(batch[..., -3:-2].to(self.device), (-1, 1))
         y_crd = torch.reshape(batch[..., -2:-1].to(self.device), (-1, 1))
         theta = torch.reshape(batch[..., -1:].to(self.device), (-1, 1))
-    
 
         x_cr_encode = self.x_cord(x_crd)
         y_cr_encode = self.y_cord(y_crd)
         tsin_encode = self.theta_sin(torch.sin(theta))
         tcos_encode = self.theta_cos(torch.cos(theta))
-        
-        
+
         encoded_input = torch.cat(
-            (
-                map_encode_robot,
-                x_cr_encode,
-                y_cr_encode,
-                tsin_encode,
-                tcos_encode,
-                dyn_x_cr_encode,
-                dyn_y_cr_encode,
-                dyn_tsin_encode,
-                dyn_tcos_encode,
-            ),
-            1,
+            (map_encode_robot, x_cr_encode, y_cr_encode, tsin_encode, tcos_encode), 1
         )
-        
+        # encoded_input = self.linear_after(encoded_input)
+        #encoded_input_max = self.linear_after_max(encoded_input)
         encoded_input_mean = self.linear_after_mean(encoded_input)
 
         return encoded_input_mean
-    
+
     def encode_map_footprint(self, batch):
         mapp = batch[..., :2500].to(self.device)
         mapp = torch.reshape(mapp, (-1, 1, 50, 50))
-    
 
-        footprint = batch[..., 2500:-3].to(self.device)
+        footprint = batch[..., 2500:].to(self.device)
         footprint = torch.reshape(footprint, (-1, 1, 50, 50))
-        
-        dyn_x_crd = torch.reshape(batch[..., -3:-2].to(self.device), (-1, 1))
-        dyn_y_crd = torch.reshape(batch[..., -2:-1].to(self.device), (-1, 1))
-        dyn_theta = torch.reshape(batch[..., -1:].to(self.device), (-1, 1))
 
         map_encode = self.encoder(mapp)
 
@@ -182,109 +165,86 @@ class Autoencoder_path(nn.Module):
 
         encoded_input = self.encoder_after(map_encode)
         encoded_input = self.decoder_after(encoded_input)
-        
-        decoded_map = self.decoder_MAP(encoded_input)
-        
         encoded_input = self.pos(encoded_input)
         encoded_input = self.transformer(encoded_input)
         encoded_input = self.decoder_pos(encoded_input)
         encoded_input = self.decoder(encoded_input).view(encoded_input.shape[0], -1)
-        
-        dyn_x_cr_encode = self.dyn_x_cord(dyn_x_crd)
-        dyn_y_cr_encode = self.dyn_y_cord(dyn_y_crd)
-        dyn_tsin_encode = self.dyn_theta_sin(torch.sin(dyn_theta))
-        dyn_tcos_encode = self.dyn_theta_cos(torch.cos(dyn_theta))
 
-        encoded_input = torch.cat((encoded_input, map_encode_robot,
-                                  dyn_x_cr_encode,
-                                  dyn_y_cr_encode,
-                                  dyn_tsin_encode,
-                                  dyn_tcos_encode), -1)
+        encoded_input = torch.cat((encoded_input, map_encode_robot), -1)
 
         return encoded_input
-    
 
     def encode_map_pos(self, batch):
-        batch = batch.reshape(-1, 612+4*16+3)                      # 1164 615
+        batch = batch.reshape(-1, 615)
 
-        map_encode_robot = batch[..., :-(3+4*16)].to(self.device)
-        
-        dyn_x_cr_encode = batch[..., -(3+4*16):-(3+3*16)].to(self.device)
-        dyn_y_cr_encode = batch[..., -(3+3*16):-(3+2*16)].to(self.device)
-        dyn_tsin_encode = batch[..., -(3+2*16):-(3+1*16)].to(self.device)
-        dyn_tcos_encode = batch[..., -(3+1*16):-(3+0*16)].to(self.device)
+        map_encode_robot = batch[..., :-3].to(self.device)
 
         x_crd = torch.reshape(batch[..., -3:-2].to(self.device), (-1, 1))
         y_crd = torch.reshape(batch[..., -2:-1].to(self.device), (-1, 1))
         theta = torch.reshape(batch[..., -1:].to(self.device), (-1, 1))
-    
 
         x_cr_encode = self.x_cord(x_crd)
         y_cr_encode = self.y_cord(y_crd)
         tsin_encode = self.theta_sin(torch.sin(theta))
         tcos_encode = self.theta_cos(torch.cos(theta))
-        
-        
+
         encoded_input = torch.cat(
-            (
-                map_encode_robot,
-                x_cr_encode,
-                y_cr_encode,
-                tsin_encode,
-                tcos_encode,
-                dyn_x_cr_encode,
-                dyn_y_cr_encode,
-                dyn_tsin_encode,
-                dyn_tcos_encode,
-            ),
-            1,
+            (map_encode_robot, x_cr_encode, y_cr_encode, tsin_encode, tcos_encode), 1
         )
-        
+        # encoded_input = self.linear_after(encoded_input)
+        #encoded_input_max = self.linear_after_max(encoded_input)
         encoded_input_mean = self.linear_after_mean(encoded_input)
 
         return encoded_input_mean
-    
-    
-    def process_map_to_transformer(self, batch):
-        mapp, x_crd, y_crd, theta, dyn_x_crd, dyn_y_crd, dyn_theta = batch
-        map_encode = self.encoder(mapp[:, :1, :, :])
+    def encode_map_footprint(self, batch):
+        mapp = batch[..., :2500].to(self.device)
+        mapp = torch.reshape(mapp, (-1, 1, 50, 50))
+
+        footprint = batch[..., 2500:].to(self.device)
+        footprint = torch.reshape(footprint, (-1, 1, 50, 50))
+
+        map_encode = self.encoder(mapp)
 
         map_encode_robot = (
-            self.encoder_robot(mapp[:, -1:, :, :]).flatten().view(mapp.shape[0], -1)
+            self.encoder_robot(footprint).flatten().view(mapp.shape[0], -1)
         )
 
-        dyn_x_cr_encode = self.dyn_x_cord(dyn_x_crd)
-        dyn_y_cr_encode = self.dyn_y_cord(dyn_y_crd)
-        dyn_tsin_encode = self.dyn_theta_sin(torch.sin(dyn_theta))
-        dyn_tcos_encode = self.dyn_theta_cos(torch.cos(dyn_theta))
-
-        encoded_input = map_encode 
-        encoded_input = self.encoder_after(encoded_input)
+        encoded_input = self.encoder_after(map_encode)
         encoded_input = self.decoder_after(encoded_input)
-        
-        decoded_map = self.decoder_MAP(encoded_input)
-        
         encoded_input = self.pos(encoded_input)
         encoded_input = self.transformer(encoded_input)
         encoded_input = self.decoder_pos(encoded_input)
         encoded_input = self.decoder(encoded_input).view(encoded_input.shape[0], -1)
 
-        encoded_input = torch.cat(
-            (
-                encoded_input,
-                map_encode_robot,
-                dyn_x_cr_encode,
-                dyn_y_cr_encode,
-                dyn_tsin_encode,
-                dyn_tcos_encode,
-            ),
-            1,
-        )
+        encoded_input = torch.cat((encoded_input, map_encode_robot), -1)
 
         return encoded_input
+
+    def encode_map_pos(self, batch):
+        batch = batch.reshape(-1, 615)                      # 1164
+
+        map_encode_robot = batch[..., :-3].to(self.device)
+
+        x_crd = torch.reshape(batch[..., -3:-2].to(self.device), (-1, 1))
+        y_crd = torch.reshape(batch[..., -2:-1].to(self.device), (-1, 1))
+        theta = torch.reshape(batch[..., -1:].to(self.device), (-1, 1))
+
+        x_cr_encode = self.x_cord(x_crd)
+        y_cr_encode = self.y_cord(y_crd)
+        tsin_encode = self.theta_sin(torch.sin(theta))
+        tcos_encode = self.theta_cos(torch.cos(theta))
+
+        encoded_input = torch.cat(
+            (map_encode_robot, x_cr_encode, y_cr_encode, tsin_encode, tcos_encode), 1
+        )
+        # encoded_input = self.linear_after(encoded_input)
+        #encoded_input_max = self.linear_after_max(encoded_input)
+        encoded_input_mean = self.linear_after_mean(encoded_input)
+
+        return encoded_input_mean
     
     def step_ctrl(self, batch):
-        mapp, x_crd, y_crd, theta, dyn_x_crd, dyn_y_crd, dyn_theta = batch
+        mapp, x_crd, y_crd, theta = batch
         map_encode = self.encoder(mapp[:, :1, :, :])
 
         map_encode_robot = (
@@ -294,11 +254,6 @@ class Autoencoder_path(nn.Module):
         y_cr_encode = self.y_cord(y_crd)
         tsin_encode = self.theta_sin(torch.sin(theta))
         tcos_encode = self.theta_cos(torch.cos(theta))
-        
-        dyn_x_cr_encode = self.dyn_x_cord(dyn_x_crd)
-        dyn_y_cr_encode = self.dyn_y_cord(dyn_y_crd)
-        dyn_tsin_encode = self.dyn_theta_sin(torch.sin(dyn_theta))
-        dyn_tcos_encode = self.dyn_theta_cos(torch.cos(dyn_theta))
 
         encoded_input = map_encode 
         encoded_input = self.encoder_after(encoded_input)
@@ -319,18 +274,14 @@ class Autoencoder_path(nn.Module):
                 y_cr_encode,
                 tsin_encode,
                 tcos_encode,
-                dyn_x_cr_encode,
-                dyn_y_cr_encode,
-                dyn_tsin_encode,
-                dyn_tcos_encode,
             ),
             1,
         )
 
+        #encoded_input_max = self.linear_after_max(encoded_input)
         encoded_input_mean = self.linear_after_mean(encoded_input)
 
-        return encoded_input_mean
-
+        return encoded_input_mean #, decoded_map
 
     def training_step(self, batch, output):
         optimizer = self.optimizers()
@@ -372,7 +323,6 @@ class Autoencoder_path(nn.Module):
         self.log("train_loss", loss, on_step=False, on_epoch=True)
         self.log("lr", sch.get_last_lr()[0], on_step=True, on_epoch=False)
         return loss
-
 
     def validation_step(self, batch, batch_idx):
         loss = self.step(batch, batch_idx, "val")

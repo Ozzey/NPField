@@ -5,29 +5,29 @@ import l4casadi as l4c
 from model_nn import Autoencoder_path
 import torch
 
-def create_solver(model):
+def create_solver(load_check):
     ######## load CNN Model
     device = torch.device("cuda")
     model_path = Autoencoder_path(mode="k")
     model_path.to(device)
-    load_check = model
-
+    # load_check = torch.load("NPField_Dynamic_576_emb.pth")
+    # load_check = torch.load("NPField_Dynamic_NonWallObst.pth")
+    # model_dict = model_path.state_dict()
+    # pretrained_dict = {k: v for k, v in load_check.items() if k in model_dict}
+    # model_dict.update(pretrained_dict) 
     model_path.load_state_dict(load_check)
-    model_path.eval()
+    model_path.eval();
     losses = []
 
     model , l4c_model = robot_model(model_path)
-
     # acados OCP handle
     ocp = AcadosOcp()
     N = 30
     ocp.dims.N = N
-
     # OCP dimensions
     nx = 5
     nu = 3
     ny = nx + nu
-
     # OCP costs
     ocp.cost.cost_type = 'NONLINEAR_LS'
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
@@ -35,20 +35,20 @@ def create_solver(model):
     ocp.model.cost_y_expr_e = model.cost_y_expr_e
 
     ######## set weights for cost function
-    w_x = 0.1 
-    w_y = 0.1
-    w_v = 0.05 
-    w_theta = 0.1
-    w_time  = 0.01
-    w_a = 0.01
-    w_w = 0.01
-    w_T = 0.01
-    w_x_e = 30
-    w_y_e = 30
-    w_v_e = 0.001
+    w_x = 0.00001 
+    w_y = 0.00001
+    w_v = 0.000005 
+    w_theta = 0.000001 # 0.005 # 
+    w_time  = 0.000001 # 0.005 # 
+    w_a = 1
+    w_w = 1
+    w_T = 0.001
+    w_x_e = 10
+    w_y_e = 10
+    w_v_e = 1
     w_theta_e = 0.01 
     w_time_e = 0.01 
-    W_obst = np.array([3000])
+    W_obst = np.array([300])   # np.array([3000])  #
 
     W_x = np.array([w_x, w_y, w_v, w_theta, w_time , w_a, w_w , w_T])
     W = np.diag(np.concatenate([W_x,W_obst]))
@@ -64,14 +64,12 @@ def create_solver(model):
     ocp.constraints.lbx = np.array([-100, -100, 0, -100 , 0])
     ocp.constraints.ubx = np.array([ 100,  100, 1,  100 , 100])
     ocp.constraints.idxbu = np.array([0, 1 , 2])
-    ocp.constraints.lbu = np.array([-0.35, -0.4 , 0.2])
-    ocp.constraints.ubu = np.array([ 0.35,  0.4 , 10])
+    ocp.constraints.lbu = np.array([-0.25, -0.6 , 0.2])
+    ocp.constraints.ubu = np.array([ 0.25,  0.6 , 6])
 
-    num_output_embeding = 676
-    obst_x = 0
-    obst_y = 0
-    obst_theta = 0
-    parameter_embedding = [100] * num_output_embeding 
+    num_predection_dynamic = 10
+    num_output_embeding = 612
+    parameter_embedding = [100] * num_output_embeding * num_predection_dynamic
     paramters = np.concatenate([parameter_embedding])
 
     ocp.parameter_values = paramters
@@ -102,3 +100,10 @@ def create_solver(model):
     acados_solver = AcadosOcpSolver(ocp, json_file="acados_mpc_npfield.json")
 
     return acados_solver
+
+if __name__ == "__main__":
+    
+
+
+    ##### create solver
+    acados_solver = create_solver()
